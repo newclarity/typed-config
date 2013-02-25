@@ -1,7 +1,7 @@
 #Typed Config
 ###A Library for Loading and using JSON in PHP Typed Objects
 
-JSON has become one of the best data formats to chose because of it's simplicity and ubiquitous support among programming languages. Most new HTTP-based web services are returning JSON and it also makes a great configuration file format. And it's really easy to load in PHP so it's perfect, right?
+JSON has become one of the best data formats to chose because of it's simplicity and ubiquitous support among programming languages. Most new HTTP-based web services are returning JSON and it also makes a great configuration file format. What's more, it's really easy to load into a PHP object so it's perfect, right?
 
 Well `json_decode()` works great, but it instantiates method-less `stdClass` objects and provide no method for establishing default values. Another downside of JSON is it does not support associative arrays, so working with JSON decoded data in PHP can feel somewhat _unnatural._ **But have no fear**, that's why _"Typed Config"_ is here.
 
