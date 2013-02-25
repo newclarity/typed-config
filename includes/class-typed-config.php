@@ -37,6 +37,15 @@ abstract class Typed_Config {
    *
    * @param $filepath
    */
+  function set_logger( $logger ) {
+    $this->__logger__ = $logger;
+  }
+
+  /**
+   * Function to allow the loader to set the __filepath__ property
+   *
+   * @param $filepath
+   */
   function set_filepath( $filepath ) {
     $this->__filepath__ = $filepath;
   }
@@ -100,7 +109,52 @@ abstract class Typed_Config {
     if ( $this === $this->__root__ ) {
       // @TODO: Make it so this does not require calling parent::finalize() somehow.
       $this->_set_defaults( $this, $id );
-      $this->finalize();
+      $this->_finalize( $this, $id );
+    }
+  }
+  private function _finalize( $item, $property_name ) {
+    $remaining = $properties = get_object_vars( $item );
+    $times = 0;
+    while ( count( $remaining ) ) {
+      if ( $times++ == 3 ) {
+        $message =<<<MESSAGE
+Finalize ran 3 times and still has properties remaining to be finalized. This is
+almost certainly a programming error. Please check your Typed_Config classes to
+ensure you are eventually returning 'true' from your finalize() methods.
+The remaining property(s) where %s for %s.
+MESSAGE;
+        $this->__logger__->error( sprintf( $message, implode( ', ', $remaining ), $property_name ) );
+      }
+      foreach( $properties as $name => $value ) {
+        if ( preg_match( '#^__[a-zA-Z_0-9]+__$#', $name ) ) {
+          unset( $remaining[$name] );
+          continue;
+        }
+        if ( is_object( $value ) ) {
+          if ( ! method_exists( $value, 'finalize' ) || $value->finalize() ) {
+            unset( $remaining[$name] );
+          }
+        } else {
+          if ( is_array( $value ) ) {
+            foreach( $value as $sub_name => $sub_value )
+              if ( is_object( $sub_value ) )
+                $this->_finalize( $sub_value, $sub_name );
+          }
+          unset( $remaining[$name] );
+        }
+      }
+      if ( 0 == count( $remaining ) && method_exists( $item, 'finalize' ) ) {
+        if ( ! $item->finalize() ) {
+          $message =<<<MESSAGE
+%s->finalize() should never return 'false' after the finalizers for all
+contained properties and their properties have been resolved so it's almost certainly
+a programming error. Please check your Typed_Config classes to ensure you are returning
+'true' from the root object's finalize() method.
+MESSAGE;
+          $this->__logger__->error( sprintf( $message, $property_name ) );
+        }
+        break;
+      }
     }
   }
 
@@ -271,24 +325,6 @@ abstract class Typed_Config {
     }
 
     return $array_of_objects;
-  }
-
-  function finalize() {
-    foreach ( get_object_vars( $this ) as $name => $value ) {
-      if ( preg_match( '#^(__root__|__schema__)$#', $name ) ) {
-        continue;
-      } else if ( is_object( $value ) ) {
-        if ( method_exists( $value, 'finalize' ) ) {
-          $value->finalize();
-        }
-      } else if ( is_array( $value ) ) {
-        foreach ( $value as $sub_name => $sub_value ) {
-          if ( is_object( $sub_value ) && method_exists( $sub_value, 'finalize' ) ) {
-            $sub_value->finalize();
-          }
-        }
-      }
-    }
   }
 
 }

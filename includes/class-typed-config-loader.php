@@ -1,8 +1,10 @@
 <?php
 
 class Typed_Config_Loader {
-  static $logger;
-
+  private static $_logger;
+  function set_logger( $logger ) {
+    return self::$_logger = $logger;
+  }
   /**
    * Loads a JSON file into a Typed Object
    *
@@ -13,23 +15,24 @@ class Typed_Config_Loader {
    * @return mixed
    */
   static function load( $name, $class_name, $json_filepath ) {
-    if ( ! isset( self::$logger ) )
-      self::$logger = new TCLP_Logger();
+    if ( ! isset( self::$_logger ) )
+      self::$_logger = new TCLP_Logger();
 
     if ( ! is_file( $json_filepath ) )
-      self::$logger->error( "The {$name} file does not exist: {$json_filepath}" );
+      self::$_logger->error( "The {$name} file does not exist: {$json_filepath}" );
 
     $json_object = file_get_contents( $json_filepath );
     if ( empty( $json_object ) )
-      self::$logger->error( "The {$name} file {$json_filepath} is empty." );
+      self::$_logger->error( "The {$name} file {$json_filepath} is empty." );
 
     $json_object = json_decode( $json_object );
     if ( empty( $json_object ) )
-      self::$logger->error( "The {$name} file {$json_filepath} has invalid syntax." );
+      self::$_logger->error( "The {$name} file {$json_filepath} has invalid syntax." );
     /**
      * @var Typed_Config $object
      */
     $object = new $class_name();
+    $object->set_logger( self::$_logger );
     $object->set_filepath( $json_filepath );
     $object->instantiate( $name, $json_object, $object );
     return $object;
