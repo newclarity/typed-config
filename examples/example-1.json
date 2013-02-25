@@ -1,0 +1,28 @@
+{
+  "type": "plugin",
+  "name": "My WordPress Plugin",
+  "version": "1.0.1",
+  "repositories" : {
+    "source": "http://bitbucket.org/newclarity/my-wordPress-plugin",
+    "embedded": {
+      "imperative": {
+        "url": "http://github.com/newclarity/imperative",
+        "version": "*"
+      },
+      "restian": {
+        "url": "http://github.com/newclarity/restian",
+        "version": "~v0.3.1"
+      },
+      "sidecar": {
+        "url": "http://github.com/newclarity/sidecar",
+        "version": "~v0.4.13"
+      }
+    }
+  },
+  "delete_files": [
+    "libraries/imperative/composer.json",
+    "libraries/restian/composer.json",
+    "libraries/sidecar/composer.json",
+    "wp-package.json"
+  ]
+}
