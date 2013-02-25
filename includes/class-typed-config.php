@@ -35,7 +35,7 @@ abstract class Typed_Config {
   /**
    * Function to allow the loader to set the __filepath__ property
    *
-   * @param $filepath
+   * @param TCLP_Logger
    */
   function set_logger( $logger ) {
     $this->__logger__ = $logger;
@@ -112,6 +112,11 @@ abstract class Typed_Config {
       $this->_finalize( $this, $id );
     }
   }
+
+  /**
+   * @param object|array $item
+   * @param string $property_name
+   */
   private function _finalize( $item, $property_name ) {
     $remaining = $properties = get_object_vars( $item );
     $times = 0;
@@ -209,8 +214,7 @@ MESSAGE;
        * if there is a get_foo_bar_default() for the array property $foo element 'bar'
        */
       if ( method_exists( $this, $method_name = "get_{$property_name}_{$name}_default" ) ) {
-        $new_value = $this->_get_property_default( $this, $method_name, $name, $value, $this->$property_name );
-        $this->$property_name = $this->_array_element_assign( $this->$property_name, $name, $new_value );
+        $this->{$property_name}[$name] = $this->_get_property_default( $this, $method_name, $name, $value, $this->$property_name );
       }
       /**
        * Now gather up all the object and array children of this array/object.
@@ -242,14 +246,15 @@ MESSAGE;
         $this->_set_defaults($value, $name);
     }
   }
-  private function _array_element_assign( $array, $element_name, $value ) {
-    /**
-     * Having to pass the array because of what I think it a weird bug not allowing me to assign here.
-     * @see: https://gist.github.com/mikeschinkel/5028467
-     */
-    $array[$element_name] = $value;
-    return $array;
-  }
+
+  /**
+   * @param object $object
+   * @param string $method_name
+   * @param string $name
+   * @param string $value
+   *
+   * @return mixed|Typed_Config
+   */
   private function _get_property_default( $object, $method_name, $name, $value ) {
     $default = call_user_func( array( $object, $method_name ), $value );
     if ( is_a( $value, 'TCLP_Needs_Default' ) ) {
@@ -258,6 +263,11 @@ MESSAGE;
     return $default;
   }
 
+  /**
+   * @param string $property_name
+   *
+   * @return bool
+   */
   private function _schema_says_instantiate( $property_name ) {
     $property_type = isset($this->__schema__[$property_name]) ? $this->__schema__[$property_name] : false;
 
@@ -282,6 +292,13 @@ MESSAGE;
     return is_array( $this->__schema__[$property_name] );
   }
 
+  /**
+   * @param string $name
+   * @param mixed $value
+   * @param bool $class_name
+   *
+   * @return Typed_Config
+   */
   private function _instantiate( $name, $value, $class_name = false ) {
     if ( ! $class_name )
       $class_name = $this->__schema__[$property_name];
