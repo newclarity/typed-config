@@ -10,22 +10,38 @@ class Typed_Config_Loader {
    *
    * @param string $name - The "Type" of object, i.e. "package", "config", etc. Used to give the loaded object its identity
    * @param string $class_name - The base typed object.
-   * @param string $json_filepath
+   * @param string $json - Filepath to JSON file or JSON in string form.
    *
    * @return mixed
    */
-  static function load( $name, $class_name, $json_filepath ) {
+  static function load( $name, $class_name, $json ) {
     if ( ! isset( self::$_logger ) )
       self::$_logger = new TCLP_Logger();
 
-    if ( ! is_file( $json_filepath ) )
-      self::$_logger->error( "The {$name} file does not exist: {$json_filepath}" );
+    /**
+     * See if it's a file
+     */
+    if ( is_file( $json ) ) {
 
-    $json_object = file_get_contents( $json_filepath );
+      $json_filepath = $json;
+      $json = file_get_contents( $json_filepath );
+
+    } else {
+      /**
+       * If it's not a file maybe it's a JSON string. Let's check that.
+       */
+      $json_object = json_decode( $json );
+      if ( empty( $json_object ) ) {
+        if ( strlen( $json ) > 100 )
+          $json = preg_replace( '#\s+#', ' ', substr( $json, 0, 100 ) . '...' );
+        self::$_logger->error( "The JSON value provided for {$name} is neither a valid file nor a valid JSON string: {$json}" );
+      }
+    }
+
     if ( empty( $json_object ) )
       self::$_logger->error( "The {$name} file {$json_filepath} is empty." );
 
-    $json_object = json_decode( $json_object );
+    $json_object = json_decode( $json );
     if ( empty( $json_object ) )
       self::$_logger->error( "The {$name} file {$json_filepath} has invalid syntax." );
     /**
@@ -33,7 +49,9 @@ class Typed_Config_Loader {
      */
     $object = new $class_name();
     $object->set_logger( self::$_logger );
-    $object->set_filepath( $json_filepath );
+    if ( ! empty( $json_filepath ) ) {
+      $object->set_filepath( $json_filepath );
+    }
     $object->instantiate( $name, $json_object, $object );
     return $object;
 
