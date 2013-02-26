@@ -1,35 +1,54 @@
 <?php
 /*
+ * Example showing how to use Typed Config; can be run standalone from the PHP command line
+ *
  * This example shows how to use Typed Config to model an expected class structure in JSON in first-class
  * PHP classes complete with methods to set defaults and validate values. This allows you to take any externally
  * generated and untrusted source of JSON data and cleanse it to be pristine and in the format for your
  * program to use reliabably and easiy.
  *
- * Author: Mike Schinkel <mike@newclarity.net>
- * License: GPLv2
- *
+ * @author: Mike Schinkel <mike@newclarity.net>
+ * @license: GPLv2
  */
+
 include( dirname( __DIR__ ) . '/typed-config.php' );
 
 function main() {
   /**
    * Loads the JSON in $json_filepath into the root 'order' object class 'Example_Order'
+   * See the class definitions below to see how you model the classes to load the JSON.
+   *
    * @var Typed_Config $order
    */
   $order = Typed_Config_Loader::load( 'order', 'Example_Order', get_json() );
+
+  /**
+   * Strip all the meta properties off except __id__ so we can 'see' the data when using print_r()
+   */
   $order->strip_meta( '__id__' );
+
+  /**
+   * Capture the print_r() value to $output and echo it.
+   */
   ob_start();
   print_r( $order );
   $output = ob_get_clean();
-  $expected = get_expected();
   echo $output;
-  echo strip_ws( $output ) == strip_ws( $expected ) ? "Results were as expected!\n" : "Results NOT as expected. Hmm.";
+
+  /**
+   * Grab the hardcoded value we expect this example to return
+   */
+  $expected = get_expected();
+
+  /**
+   * Lastly test to see if they are the same sans whitespace, echo results of our test.
+   */
+  if ( strip_ws( $output ) == strip_ws( $expected ) )
+    echo "Results were as expected!\n";
+  else
+    echo "Results NOT as expected. Hmm.";
 
 }
-function strip_ws( $string ) {
-  return preg_replace( '#\s+#', '', $string );
-}
-
 /**
  * Returns the example JSON string
  *
@@ -128,34 +147,57 @@ EXPECTED;
  * This class defines both the "schema" to load the JSON as well as it's for the
  */
 class Example_Order extends Typed_Config {
+
+  /**
+   * Set any default values for properties here.
+   */
+  var $id;
+  var $customer;
+  var $addresses = array();
+  var $items = array();
+
+  /**
+   * Defines the schema of an Order to using an Example_Customer class for the 'customer' property,
+   * the 'addresses' property to be a keyed array of Example_Address objects with 'billing' and 'shipping' keys,
+   * and an array of Example_Item objects in the 'items' property.
+   */
   protected $__schema__ = array(
-    'items' => array( 'Example_Item' ),
     'customer' => 'Example_Customer',
     'addresses' => array(
       'billing' => 'Example_Address',
       'shipping' => 'Example_Address',
     ),
+    'items' => array( 'Example_Item' ),
   );
 
-  var $id;
-  var $customer;
-  var $addresses = array();
-  var $items = array();
+  /**
+   * If Shipping is missing then Billing is same as Shipping.
+   */
   function get_addresses_shipping_default( $value ) {
-    /**
-     * If Shipping is missing then Billing is same as Shipping.
-     */
     return $this->addresses['billing'];
   }
 }
 
 class Example_Customer extends Typed_Config {
-  protected $__if_string__ = 'name';
+
+  /**
+   * Set type to default to 'person' if it's not specified in JSON file.
+   */
   var $type = 'person';
   var $organization;
   var $name;
   var $email;
   var $phone;
+
+  /**
+   * Specify that if a string is provided instead of an object, create
+   * an instance and assign the value to the 'name' property.
+   */
+  protected $__if_string__ = 'name';
+
+  /**
+   * If the customer value or name is "Foo Bar <foo@bar.com>" then this splits name and email address into fields.
+   */
   function filter_name_value( $name ) {
     if ( preg_match( '#^(.+)<([^>]+)+>$#', trim( $name ), $match ) ) {
       $name = trim( $match[1] );
@@ -163,14 +205,19 @@ class Example_Customer extends Typed_Config {
     }
     return $name;
   }
+  /**
+   * If the type specified is 'company' changes to 'organization'
+   * If none of 'company', 'organization' or 'person' sets to 'person'
+   */
   function get_type_default( $value ) {
-    if ( ! preg_match( '#^(person|organization)$#', $value ) ) {
+    if ( 'company' == $value ) {
+      $value = 'organization';
+    } else if ( ! preg_match( '#^(person|organization)$#', $value ) ) {
       $value = 'person';
     }
     return $value;
   }
 }
-
 
 class Example_Address extends Typed_Config {
   var $street;
@@ -183,6 +230,17 @@ class Example_Item extends Typed_Config {
   var $sku;
   var $description;
   var $quantity;
+}
+
+/**
+ * Removes all whitespace from a string, makes it easier to compare two strings for sameness.
+ *
+ * @param string $string
+ *
+ * @return string
+ */
+function strip_ws( $string ) {
+  return preg_replace( '#\s+#', '', $string );
 }
 
 main();

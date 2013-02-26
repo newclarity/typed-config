@@ -8,7 +8,7 @@
  * @license   http://www.gnu.org/licenses/gpl-2.0.html
  * @version   0.2.0
  * @link      http://github.com/newclarity.net/typed-config
- * @requires PHP 5.3
+ * @requires  PHP 5.3
  */
 
 require ( __DIR__ . "/includes/class-typed-config-loader.php" );
