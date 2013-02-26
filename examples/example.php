@@ -62,7 +62,7 @@ function get_json() {
   "addresses": {
     "billing": {
       "street": "123 Main Street.",
-      "city" : "Anytown, USA",
+      "city" : "Anytown",
       "country": "USA",
       "post_code": "12345-9876"
     }
@@ -100,7 +100,7 @@ Example_Order Object
             [billing] => Example_Address Object
                 (
                     [street] => 123 Main Street.
-                    [city] => Anytown, USA
+                    [city] => Anytown
                     [country] => USA
                     [post_code] => 12345-9876
                     [__id__] => billing
@@ -109,7 +109,7 @@ Example_Order Object
             [shipping] => Example_Address Object
                 (
                     [street] => 123 Main Street.
-                    [city] => Anytown, USA
+                    [city] => Anytown
                     [country] => USA
                     [post_code] => 12345-9876
                     [__id__] => shipping
