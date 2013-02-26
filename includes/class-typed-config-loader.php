@@ -18,14 +18,17 @@ class Typed_Config_Loader {
     if ( ! isset( self::$_logger ) )
       self::$_logger = new TCLP_Logger();
 
+    if ( empty( $json ) )
+      self::$_logger->error( "The {$name} file or JSON string {$json} is empty." );
+
     /**
      * See if it's a file
      */
     if ( is_file( $json ) ) {
-
-      $json_filepath = $json;
-      $json = file_get_contents( $json_filepath );
-
+      $json = file_get_contents( $json_filepath = $json );
+      $json_object = json_decode( $json );
+      if ( empty( $json_object ) )
+        self::$_logger->error( "The {$name} file {$json_filepath} has invalid syntax." );
     } else {
       /**
        * If it's not a file maybe it's a JSON string. Let's check that.
@@ -34,16 +37,10 @@ class Typed_Config_Loader {
       if ( empty( $json_object ) ) {
         if ( strlen( $json ) > 100 )
           $json = preg_replace( '#\s+#', ' ', substr( $json, 0, 100 ) . '...' );
-        self::$_logger->error( "The JSON value provided for {$name} is neither a valid file nor a valid JSON string: {$json}" );
+        self::$_logger->error( "The JSON value provided for {$name} is not a valid JSON string: {$json}" );
       }
     }
 
-    if ( empty( $json_object ) )
-      self::$_logger->error( "The {$name} file {$json_filepath} is empty." );
-
-    $json_object = json_decode( $json );
-    if ( empty( $json_object ) )
-      self::$_logger->error( "The {$name} file {$json_filepath} has invalid syntax." );
     /**
      * @var Typed_Config $object
      */

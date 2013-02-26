@@ -15,15 +15,16 @@ include( dirname( __DIR__ ) . '/typed-config.php' );
 
 function main() {
   /**
-   * Loads the JSON in $json_filepath into the root 'order' object class 'Example_Order'
-   * See the class definitions below to see how you model the classes to load the JSON.
+   * Loads the JSON into root $order' object class 'Example_Order'
+   * See class definitions for how to model classes to load the JSON.
    *
    * @var Typed_Config $order
    */
   $order = Typed_Config_Loader::load( 'order', 'Example_Order', get_json() );
 
   /**
-   * Strip all the meta properties off except __id__ so we can 'see' the data when using print_r()
+   * Strip all the meta properties off except __id__ to make it easier to
+   *  visually inspect the data displayed when using print_r().
    */
   $order->strip_meta( '__id__' );
 
