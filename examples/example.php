@@ -2,10 +2,9 @@
 /*
  * Example showing how to use Typed Config; can be run standalone from the PHP command line
  *
- * This example shows how to use Typed Config to model an expected class structure in JSON in first-class
- * PHP classes complete with methods to set defaults and validate values. This allows you to take any externally
- * generated and untrusted source of JSON data and cleanse it to be pristine and in the format for your
- * program to use reliabably and easiy.
+ * This example shows how to use Typed Config to model an expected class structure in JSON in first-class PHP classes
+ * complete with methods to set defaults and validate values. This allows you to take any externally generated and
+ * untrusted source of JSON data and cleanse it to be in the format your program needs simply and easily.
  *
  * @author: Mike Schinkel <mike@newclarity.net>
  * @license: GPLv2
