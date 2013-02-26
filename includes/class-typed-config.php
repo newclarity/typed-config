@@ -10,7 +10,12 @@ abstract class Typed_Config {
   /**
    * @var string
    */
-  protected $__id__;
+  protected $__if_string__;
+
+  /**
+   * @var string
+   */
+  var $__id__;
 
   /**
    * @var string
@@ -65,11 +70,7 @@ abstract class Typed_Config {
     }
     $this->__id__   = $id;
     $this->__root__ = $root;
-    /**
-     * Derives the "schema" from the default values set in the properties.
-     * This call clears the schema from the properties so that properties default to null or array().
-     */
-    //$this->__schema__ = $this->_get_and_clear_schema( $this );
+
     if ( ! is_null( $value ) ) {
       if ( is_object( $value ) )
         $value = (array) $value;
@@ -77,9 +78,19 @@ abstract class Typed_Config {
       if ( method_exists( $this, 'filter_loaded_values' ) )
         $value = $this->filter_loaded_values( $value, $id );
 
+      if ( is_string( $value ) && ! is_null( $this->__if_string__ ) ) {
+        $this->{$this->__if_string__} = $value;
+        if ( method_exists( $this, $method_name = "filter_{$this->__if_string__}_value" ) )
+          $this->{$this->__if_string__} = $this->$method_name( $this->{$this->__if_string__}, $value );
+      }
+
       if ( is_array( $value ) ) {
-        $value = array_merge( get_object_vars( $this ), $value );
-        foreach ( $value as $property_name => $property_value ) {
+        $array = array_merge( get_object_vars( $this ), $value );
+        foreach ( $array as $property_name => $property_value ) {
+          if ( $this->_is_meta_property( $property_name ) ) {
+            unset( $array[$property_name] );
+            continue;
+          }
           if ( property_exists( $this, $property_name ) ) {
             if ( $this->_schema_says_instantiate( $property_name ) ) {
               $this->$property_name = $this->_instantiate( $property_name, $property_value );
@@ -88,14 +99,14 @@ abstract class Typed_Config {
             } else {
               $this->$property_name = $property_value;
             }
-            unset($value[$property_name]);
+            unset( $array[$property_name] );
           }
           if ( method_exists( $this, $method_name = "filter_{$property_name}_value" ) )
             $this->$property_name = $this->$method_name( $this->$property_name, $property_value );
         }
 
-        if ( count( $value ) )
-          $this->__unused__ = $value;
+        if ( count( $array ) )
+          $this->__unused__ = $array;
 
         if ( method_exists( $this, "monitor_new_values" ) )
           $this->monitor_new_values( $this, $value );
@@ -131,7 +142,7 @@ MESSAGE;
         $this->__logger__->error( sprintf( $message, implode( ', ', $remaining ), $property_name ) );
       }
       foreach( $properties as $name => $value ) {
-        if ( preg_match( '#^__[a-zA-Z_0-9]+__$#', $name ) ) {
+        if ( $this->_is_meta_property( $name ) ) {
           unset( $remaining[$name] );
           continue;
         }
@@ -164,6 +175,32 @@ MESSAGE;
   }
 
   /**
+   * Strips all the meta values off, mostly so a print_r() or var_dump() is easier to read.
+   */
+  function strip_meta( $except = false ) {
+    foreach( get_object_vars( $this ) as $property_name => $property_value ) {
+      if ( $this->_is_meta_property( $property_name ) ) {
+        if ( ! $except || ! preg_match( "#^({$except})$#", $property_name ) ) {
+          unset( $this->$property_name );
+        }
+      } else if ( is_array( $property_value ) ) {
+        foreach( $property_value as $sub_name => $sub_value )
+          if ( method_exists( $sub_value, 'strip_meta' ) ) {
+            /**
+             * @var Typed_Config $sub_value
+             */
+            $sub_value->strip_meta( $except );
+          }
+      } else if ( method_exists( $property_value, 'strip_meta' ) ) {
+        /**
+         * @var Typed_Config $property_value
+         */
+        $property_value->strip_meta( $except );
+      }
+    }
+  }
+
+  /**
    * @param Typed_Config|array $item
    * @param bool|string $property_name
    * @param int $depth
@@ -180,7 +217,7 @@ MESSAGE;
     } else if ( is_object( $item ) ) {
       $array = get_object_vars( $item );
       foreach ( $array as $name => $value ) {
-        if ( preg_match( '#^__[a-zA-Z_0-9]+__$#', $name ) ) {
+        if ( $this->_is_meta_property( $name ) ) {
           /**
            * Be sure to omit any properties like __id__ and __root__.
            */
@@ -300,8 +337,9 @@ MESSAGE;
    * @return Typed_Config
    */
   private function _instantiate( $name, $value, $class_name = false ) {
-    if ( ! $class_name )
-      $class_name = $this->__schema__[$property_name];
+    if ( ! $class_name ) {
+      $class_name = $this->__schema__[$name];
+    }
     /**
      * @var Typed_Config $object
      */
@@ -322,26 +360,48 @@ MESSAGE;
   private function _instantiate_array_of_objects( $property_name, $property_value ) {
     $schema_array     = $this->__schema__[$property_name];
     $property_value   = (array) $property_value;
-    $array_of_objects = array();
-    foreach ( (array) $schema_array as $name => $value ) {
-      if ( is_string( $value ) ) {
-        $class_name = $value;
-        if ( ! isset($property_value[$name]) ) {
-          $array_of_objects[$name] = new TCLP_Needs_Default( $name, $class_name );
-        } else {
-          $array_of_objects[$name] = $this->_instantiate( $name, $property_value[$name], $class_name );
+    if ( 1 == count( $schema_array ) && 0 == key( $schema_array ) && is_array( $property_value ) ) {
+      /**
+       * This is a simple numerically indexed array
+       */
+      foreach ( $property_value as $index => $value ) {
+        $property_value[$index] = $this->_instantiate( "{$property_name}[{$index}]", $value, $schema_array[0] );
+      }
+      $array_of_objects = $property_value;
+    } else {
+      /**
+       * This is a keyed array
+       */
+      $array_of_objects = array();
+      foreach ( (array) $schema_array as $name => $value ) {
+        if ( is_string( $value ) ) {
+          $class_name = $value;
+          if ( ! isset($property_value[$name]) ) {
+            $array_of_objects[$name] = new TCLP_Needs_Default( $name, $class_name );
+          } else {
+            $array_of_objects[$name] = $this->_instantiate( $name, $property_value[$name], $class_name );
+          }
+        } else if ( is_array( $value ) ) {
+          $class_name  = $value[0];
+          $sub_objects = array();
+          foreach ( (array) $property_value[$name] as $sub_name => $sub_value ) {
+            $sub_objects[$sub_name] = $this->_instantiate( $sub_name, $sub_value, $class_name );
+          }
+          $array_of_objects[$name] = $sub_objects;
         }
-      } else if ( is_array( $value ) ) {
-        $class_name  = $value[0];
-        $sub_objects = array();
-        foreach ( (array) $property_value[$name] as $sub_name => $sub_value ) {
-          $sub_objects[$sub_name] = $this->_instantiate( $sub_name, $sub_value, $class_name );
-        }
-        $array_of_objects[$name] = $sub_objects;
       }
     }
-
     return $array_of_objects;
   }
 
+  /**
+   * Test to see if an object property name is a meta property.
+   *
+   * @param string $property_name
+   *
+   * @return int
+   */
+  private function _is_meta_property( $property_name ) {
+    return preg_match( '#^__[a-zA-Z_0-9]+__$#', $property_name );
+  }
 }
