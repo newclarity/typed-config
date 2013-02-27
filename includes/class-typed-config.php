@@ -517,7 +517,7 @@ MESSAGE;
     if ( is_null( $value ) ) {
       $value = $this->_try_hook( $this, 'get_value', $property_name, $value );
     } else {
-      $this->__hooks__['get_value'] = method_exists( $this, 'get_value' );
+      $this->__hooks__['get_value'] = false;
     }
     if ( is_null( $value ) ) {
       $backtrace = debug_backtrace();
