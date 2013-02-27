@@ -49,6 +49,15 @@ abstract class Typed_Config {
   /**
    * Function to allow the loader to set the __filepath__ property
    *
+   * @return TCLP_Logger
+   */
+  function get_logger() {
+    return $this->__logger__;
+  }
+
+  /**
+   * Function to allow the loader to set the __filepath__ property
+   *
    * @param $filepath
    */
   function set_filepath( $filepath ) {
@@ -225,12 +234,11 @@ MESSAGE;
           continue;
         }
         /**
-         * If the $item is an Typed_Config we can test it for each property to see
+         * If the property needs a default and there is a "get_{$property_name}_default"
+         * the $item is an Typed_Config we can test it for each property to see
          * if there is a set_property_defaults() method we can run.
          */
-        if ( method_exists( $item, $method_name = "get_{$name}_default" ) ) {
-          $item->$name = $this->_get_property_default( $item, $method_name, $name, $value );
-        }
+        $value = $this->_set_default_properties( $item, $name, $value );
       }
       /**
        * After we run the initial defaults methods, if any, let's
@@ -250,8 +258,8 @@ MESSAGE;
       /**
        * if there is a get_foo_bar_default() for the array property $foo element 'bar'
        */
-      if ( method_exists( $this, $method_name = "get_{$property_name}_{$name}_default" ) ) {
-        $this->{$property_name}[$name] = $this->_get_property_default( $this, $method_name, $name, $value, $this->$property_name );
+      if ( is_array( $item ) ) {
+        $value = $this->_set_default_properties( $this, $name, $value, $property_name );
       }
       /**
        * Now gather up all the object and array children of this array/object.
@@ -264,10 +272,10 @@ MESSAGE;
      */
     if ( is_array( $item ) ) {
       /**
-       * if there is a get_foo_defaults() for the array property $foo
+       * if there is a set_foo_defaults() for the array property $foo
        */
-      if ( method_exists( $this, $method_name = "get_{$property_name}_defaults" ) ) {
-        $this->$property_name = call_user_func( array( $this, $method_name ), $this->$property_name, $property_name );
+      if ( method_exists( $this, $method_name = "set_{$property_name}_defaults" ) ) {
+        call_user_func( array( $this, $method_name ), $this->$property_name  );
       }
     }
 
@@ -286,18 +294,29 @@ MESSAGE;
 
   /**
    * @param object $object
-   * @param string $method_name
    * @param string $name
    * @param string $value
+   * @param bool|string $parent_name
    *
    * @return mixed|Typed_Config
    */
-  private function _get_property_default( $object, $method_name, $name, $value ) {
-    $default = call_user_func( array( $object, $method_name ), $value );
+  private function _set_default_properties( $object, $name, $value, $parent_name = false ) {
+    $selector = $parent_name ? "{$parent_name}_{$name}" : $name;
     if ( is_a( $value, 'TCLP_Needs_Default' ) ) {
-      $default = $this->_instantiate( $name, $default, $value->class_name );
+      if ( method_exists( $object, $method_name = "get_{$selector}_default" ) ) {
+        $value = $this->_instantiate( $name, call_user_func( array( $object, $method_name ) ), $value->class_name );
+        if ( $parent_name )
+          $object->{$parent_name}[$name] = $value;
+        else
+          $object->$name = $value;
+      } else {
+        $message = 'No %s() method available for property %s' . ( $parent_name ? "['%s']" : 'name %s.' );
+        $this->get_logger()->error( sprintf( $message, $method_name, $parent_name, $name ) );
+      }
+    } else if ( empty( $value ) && method_exists( $object, $method_name = "set_{$selector}_default" ) ) {
+      call_user_func( array( $object, $method_name ) );
     }
-    return $default;
+    return $value;
   }
 
   /**
@@ -376,7 +395,7 @@ MESSAGE;
       foreach ( (array) $schema_array as $name => $value ) {
         if ( is_string( $value ) ) {
           $class_name = $value;
-          if ( ! isset($property_value[$name]) ) {
+          if ( ! isset( $property_value[$name] ) ) {
             $array_of_objects[$name] = new TCLP_Needs_Default( $name, $class_name );
           } else {
             $array_of_objects[$name] = $this->_instantiate( $name, $property_value[$name], $class_name );
@@ -404,4 +423,21 @@ MESSAGE;
   private function _is_meta_property( $property_name ) {
     return preg_match( '#^__[a-zA-Z_0-9]+__$#', $property_name );
   }
+
+  function __get( $property_name ) {
+    $value = null;
+    if ( method_exists( $this, $method_name = "get_{$property_name}_value" ) ) {
+      $value = call_user_func( array( $this, $method_name ) );
+    } else if ( method_exists( $this, $method_name = "get_value" ) ) {
+      $value = call_user_func( array( $this, $method_name ), $property_name );
+    }
+    if ( is_null( $value ) ) {
+      $backtrace = debug_backtrace();
+      $class_name = get_class( $this );
+      $message = "Undefined property: {$class_name}::\${$property_name} in {$backtrace[1]['file']} on line {$backtrace[1]['line']} reported";
+      trigger_error( $message, E_USER_ERROR);
+    }
+    return $value;
+  }
+
 }
