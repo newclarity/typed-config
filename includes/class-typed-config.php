@@ -38,6 +38,11 @@ abstract class Typed_Config {
   protected $__logger__;
 
   /**
+   * @var array
+   */
+  protected $__hooks__ = array();
+
+  /**
    * Function to allow the loader to set the __filepath__ property
    *
    * @param TCLP_Logger
@@ -64,6 +69,37 @@ abstract class Typed_Config {
     $this->__filepath__ = $filepath;
   }
 
+  private function _try_hook( $object, $method_name, $value = null ) {
+    if ( ! is_object( $object ) ) {
+      echo '';
+    }
+    if ( $object->__hooks__[$method_name] = method_exists( $object, $method_name ) ) {
+      $value = call_user_func_array( array( $object, $method_name ), array_slice( func_get_args(), 2 ) );
+    }
+    return $value;
+  }
+
+  /**
+   * Returns an array for all the properties that are not meta properties for an instance
+   * @param $object_or_array
+   *
+   * @return array
+   */
+  function _get_public_properties( $object_or_array ) {
+    $array = array();
+    if ( is_object( $object_or_array ) ) {
+      foreach( get_object_vars( $object_or_array ) as $name => $value ) {
+        if ( ! $this->_is_meta_property( $name ) )
+          $array[$name] = $object_or_array->$name;
+      }
+    } else {
+      foreach( array_keys( $object_or_array ) as $name ) {
+        if ( ! $this->_is_meta_property( $name ) )
+          $array[$name] = $object_or_array[$name];
+      }
+    }
+    return $array;
+  }
   /**
    * @param string $id
    * @param bool|object|mixed $value Either a JSON object or a scalar
@@ -81,25 +117,21 @@ abstract class Typed_Config {
     $this->__root__ = $root;
 
     if ( ! is_null( $value ) ) {
-      if ( is_object( $value ) )
-        $value = (array) $value;
-
-      if ( method_exists( $this, 'filter_loaded_values' ) )
-        $value = $this->filter_loaded_values( $value, $id );
 
       if ( is_string( $value ) && ! is_null( $this->__if_string__ ) ) {
         $this->{$this->__if_string__} = $value;
-        if ( method_exists( $this, $method_name = "filter_{$this->__if_string__}_value" ) )
-          $this->{$this->__if_string__} = $this->$method_name( $this->{$this->__if_string__}, $value );
+        $value = $this->_get_public_properties( $this );
       }
 
-      if ( is_array( $value ) ) {
-        $array = array_merge( get_object_vars( $this ), $value );
+
+      if ( is_object( $value ) || is_array( $value ) ) {
+        $array = array_merge( $this->_get_public_properties( $this ), $this->_get_public_properties( $value ) );
         foreach ( $array as $property_name => $property_value ) {
-          if ( $this->_is_meta_property( $property_name ) ) {
-            unset( $array[$property_name] );
-            continue;
-          }
+          $array[$property_name] = $this->_try_hook( $this, "pre_filter_{$property_name}_value", $property_value, $property_name, $id );
+        }
+        $array = array_merge( $this->_get_public_properties( $this ), array_filter( (array)$array ) );
+        $array = $this->_try_hook( $this, "pre_filter_values", $array, $id );
+        foreach ( $array as $property_name => $property_value ) {
           if ( property_exists( $this, $property_name ) ) {
             if ( $this->_schema_says_instantiate( $property_name ) ) {
               $this->$property_name = $this->_instantiate( $property_name, $property_value );
@@ -110,21 +142,20 @@ abstract class Typed_Config {
             }
             unset( $array[$property_name] );
           }
-          if ( method_exists( $this, $method_name = "filter_{$property_name}_value" ) )
-            $this->$property_name = $this->$method_name( $this->$property_name, $property_value );
+          $this->$property_name = $this->_try_hook( $this, "filter_{$property_name}_value", $this->$property_name, $property_value );
         }
+
+        $this->_try_hook( $this, "process_filtered_values", $id );
 
         if ( count( $array ) )
           $this->__unused__ = $array;
 
-        if ( method_exists( $this, "monitor_new_values" ) )
-          $this->monitor_new_values( $this, $value );
+        $this->__unused__ = $this->_try_hook( $this, "post_filter_unused_values", $this->__unused__, $id );
 
       }
     }
 
-    if ( method_exists( $this, 'initialize' ) )
-      $this->initialize( $value, $id );
+    $this->_try_hook( $this, 'initialize', $value, $id );
 
     if ( $this === $this->__root__ ) {
       // @TODO: Make it so this does not require calling parent::finalize() somehow.
@@ -156,7 +187,8 @@ MESSAGE;
           continue;
         }
         if ( is_object( $value ) ) {
-          if ( ! method_exists( $value, 'finalize' ) || $value->finalize() ) {
+          $this->_try_hook( $value, 'finalize' );
+          if ( ! method_exists( $value, 'finalize' ) ) {
             unset( $remaining[$name] );
           }
         } else {
@@ -168,8 +200,9 @@ MESSAGE;
           unset( $remaining[$name] );
         }
       }
-      if ( 0 == count( $remaining ) && method_exists( $item, 'finalize' ) ) {
-        if ( ! $item->finalize() ) {
+      if ( 0 == count( $remaining ) ) {
+        $finalize = $this->_try_hook( $item, 'finalize' );
+        if ( false === $finalize ) {
           $message =<<<MESSAGE
 %s->finalize() should never return 'false' after the finalizers for all
 contained properties and their properties have been resolved so it's almost certainly
@@ -194,27 +227,58 @@ MESSAGE;
         }
       } else if ( is_array( $property_value ) ) {
         foreach( $property_value as $sub_name => $sub_value )
-          if ( method_exists( $sub_value, 'strip_meta' ) ) {
-            /**
-             * @var Typed_Config $sub_value
-             */
-            $sub_value->strip_meta( $except );
-          }
-      } else if ( method_exists( $property_value, 'strip_meta' ) ) {
-        /**
-         * @var Typed_Config $property_value
-         */
-        $property_value->strip_meta( $except );
+          if ( is_object( $sub_value ) )
+            $this->_try_hook( $sub_value, 'strip_meta', $except );
+      } else {
+        if ( is_object( $property_value ) )
+          $this->_try_hook( $property_value, 'strip_meta', $except );
       }
     }
+  }
+
+  /**
+   *
+   */
+  function get_hooks( $item = false, $parent = false ) {
+    $hooks = array();
+    if ( ! $item )
+      $item = $this;
+    if ( ! $parent )
+      $parent = $item->__id__;
+    if ( is_array( $item ) ) {
+      foreach( $item as $name => $value ) {
+        if ( isset( $value->__hooks__ ) ) {
+          $hooks = array_merge( $hooks, $value->get_hooks( $value, "{$parent}[{$name}]") );
+        }
+      }
+    } else {
+      foreach( get_object_vars( $item ) as $property_name => $property_value ) {
+        if ( $this->_is_meta_property( $property_name ) ) {
+          continue;
+        } else if ( isset( $property_value->__hooks__ ) ) {
+          $hooks = array_merge( $hooks, $property_value->get_hooks( $property_value, "{$parent}->{$property_name}") );
+        } else if ( is_array( $property_value ) ) {
+          $hooks = array_merge( $hooks, $item->get_hooks( $property_value, "{$parent}->{$property_name}") );
+        }
+      }
+    }
+    if ( isset( $this->__hooks__ ) ) {
+      foreach( $this->__hooks__  as $hook_name => $hook_ran ) {
+        $hooks["{$parent}->{$hook_name}"] = $hook_ran ? 1 : 0;
+      }
+    }
+    return $hooks;
   }
 
   /**
    * @param Typed_Config|array $item
    * @param bool|string $property_name
    * @param int $depth
+   * @param bool|Typed_Config $parent
    */
-  private function _set_defaults( $item, $property_name = false, $depth = 0 ) {
+  private function _set_defaults( $item, $property_name = false, $depth = 0, $parent = false ) {
+    if ( ! $parent )
+      $parent = $this;
     $delegates = array();
     $omit = array();
     if ( is_array( $item ) ) {
@@ -240,13 +304,6 @@ MESSAGE;
          */
         $value = $this->_set_default_properties( $item, $name, $value );
       }
-      /**
-       * After we run the initial defaults methods, if any, let's
-       * set if there is a general set_defaults method we can run.
-       */
-      if ( method_exists( $item, $method_name = "set_defaults" ) ) {
-        call_user_func( array( $item, $method_name ) );
-      }
     }
     /**
      * Now for (almost) all array elements or object properties
@@ -256,10 +313,10 @@ MESSAGE;
         continue;
 
       /**
-       * if there is a get_foo_bar_default() for the array property $foo element 'bar'
+       * if there is a set_foo_bar_default() for the array property $foo element 'bar'
        */
       if ( is_array( $item ) ) {
-        $value = $this->_set_default_properties( $this, $name, $value, $property_name );
+        $value = $this->_set_default_properties( $parent, $name, $value, $property_name );
       }
       /**
        * Now gather up all the object and array children of this array/object.
@@ -274,9 +331,7 @@ MESSAGE;
       /**
        * if there is a set_foo_defaults() for the array property $foo
        */
-      if ( method_exists( $this, $method_name = "set_{$property_name}_defaults" ) ) {
-        call_user_func( array( $this, $method_name ), $this->$property_name  );
-      }
+      $this->_try_hook( $parent, "set_{$property_name}_defaults", $parent->$property_name );
     }
 
     if ( $depth == 100 ) {
@@ -288,8 +343,15 @@ MESSAGE;
      */
     foreach( $delegates as $name => $value ) {
       if ( ! isset( $omit[$name] ) )
-        $this->_set_defaults($value, $name);
+        $this->_set_defaults( $value, $name, $depth++, is_array( $item ) ? $parent : $item );
     }
+    /**
+     * After we run the initial defaults methods, if any, let's
+     * set if there is a general set_defaults method we can run.
+     */
+    if ( is_object( $item ) )
+      $this->_try_hook( $item, 'set_defaults' );
+
   }
 
   /**
@@ -303,8 +365,11 @@ MESSAGE;
   private function _set_default_properties( $object, $name, $value, $parent_name = false ) {
     $selector = $parent_name ? "{$parent_name}_{$name}" : $name;
     if ( is_a( $value, 'TCLP_Needs_Default' ) ) {
-      if ( method_exists( $object, $method_name = "get_{$selector}_default" ) ) {
-        $value = $this->_instantiate( $name, call_user_func( array( $object, $method_name ) ), $value->class_name );
+      $new_value = $this->_try_hook( $object, $method_name = "get_{$selector}_default" );
+      if ( method_exists( $object, $method_name ) ) {
+        if ( isset( $new_value->__id__ ) )
+          $new_value->__id__ = $name;
+        $value = $this->_instantiate( $name, $new_value, $value->class_name );
         if ( $parent_name )
           $object->{$parent_name}[$name] = $value;
         else
@@ -313,10 +378,33 @@ MESSAGE;
         $message = 'No %s() method available for property %s' . ( $parent_name ? "['%s']" : 'name %s.' );
         $this->get_logger()->error( sprintf( $message, $method_name, $parent_name, $name ) );
       }
-    } else if ( empty( $value ) && method_exists( $object, $method_name = "set_{$selector}_default" ) ) {
-      call_user_func( array( $object, $method_name ) );
+      $object->__hooks__["set_{$selector}_default"] = false;
+    } else if ( empty( $value ) ) {
+      if ( $object->_schema_says_object( $name, $parent_name ) )
+        $object->__hooks__["get_{$selector}_default"] = false;
+      $this->_try_hook( $object, "set_{$selector}_default" );
+    } else {
+      if ( $object->_schema_says_object( $name, $parent_name ) )
+        $object->__hooks__["get_{$selector}_default"] = false;
+      $object->__hooks__["set_{$selector}_default"] = false;
     }
     return $value;
+  }
+
+  /**
+   * @param string $property_name
+   * @param bool|string $parent_name
+   *
+   * @return bool
+   */
+
+  private function _schema_says_object( $property_name, $parent_name = false ) {
+    if ( $parent_name ) {
+      $is_object = isset( $this->__schema__[$parent_name][$property_name] ) && is_string( $this->__schema__[$parent_name][$property_name] );
+    } else {
+      $is_object = isset( $this->__schema__[$property_name] ) && is_string( $this->__schema__[$property_name] );
+    }
+    return $is_object;
   }
 
   /**
@@ -425,11 +513,11 @@ MESSAGE;
   }
 
   function __get( $property_name ) {
-    $value = null;
-    if ( method_exists( $this, $method_name = "get_{$property_name}_value" ) ) {
-      $value = call_user_func( array( $this, $method_name ) );
-    } else if ( method_exists( $this, $method_name = "get_value" ) ) {
-      $value = call_user_func( array( $this, $method_name ), $property_name );
+    $value = $this->_try_hook( $this, $method_name = "get_{$property_name}_value" );
+    if ( is_null( $value ) ) {
+      $value = $this->_try_hook( $this, 'get_value', $property_name, $value );
+    } else {
+      $this->__hooks__['get_value'] = method_exists( $this, 'get_value' );
     }
     if ( is_null( $value ) ) {
       $backtrace = debug_backtrace();
