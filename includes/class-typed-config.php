@@ -30,10 +30,10 @@ abstract class Typed_Config {
   /**
    * @var array
    */
-  protected $__unused__;
+  protected $__unused__ = array();
 
   /**
-   * @var object
+   * @var bool|object
    */
   protected $__logger__;
 
@@ -45,7 +45,7 @@ abstract class Typed_Config {
   /**
    * Function to allow the loader to set the __filepath__ property
    *
-   * @param TCLP_Logger
+   * @param Typed_Config_Logger
    */
   function set_logger( $logger ) {
     $this->__logger__ = $logger;
@@ -54,7 +54,7 @@ abstract class Typed_Config {
   /**
    * Function to allow the loader to set the __filepath__ property
    *
-   * @return TCLP_Logger
+   * @return Typed_Config_Logger
    */
   function get_logger() {
     return $this->__logger__;
@@ -69,10 +69,14 @@ abstract class Typed_Config {
     $this->__filepath__ = $filepath;
   }
 
+  /**
+   * Function to retrieve the value of the __filepath__ property
+   */
+  function get_filepath() {
+    return $this->__filepath__;
+  }
+
   private function _try_hook( $object, $method_name, $value = null ) {
-    if ( ! is_object( $object ) ) {
-      echo '';
-    }
     if ( $object->__hooks__[$method_name] = method_exists( $object, $method_name ) ) {
       $value = call_user_func_array( array( $object, $method_name ), array_slice( func_get_args(), 2 ) );
     }
@@ -132,7 +136,9 @@ abstract class Typed_Config {
         $array = array_merge( $this->_get_public_properties( $this ), array_filter( (array)$array ) );
         $array = $this->_try_hook( $this, "pre_filter_values", $array, $id );
         foreach ( $array as $property_name => $property_value ) {
-          if ( property_exists( $this, $property_name ) ) {
+          if ( ! property_exists( $this, $property_name ) ) {
+            $this->__unused__[$property_name] = $property_value;
+          } else {
             if ( $this->_schema_says_instantiate( $property_name ) ) {
               $this->$property_name = $this->_instantiate( $property_name, $property_value );
             } else if ( $this->_schema_says_instantiate_array_of_objects( $property_name ) ) {
@@ -141,8 +147,8 @@ abstract class Typed_Config {
               $this->$property_name = $property_value;
             }
             unset( $array[$property_name] );
+            $this->$property_name = $this->_try_hook( $this, "filter_{$property_name}_value", $this->$property_name, $property_value );
           }
-          $this->$property_name = $this->_try_hook( $this, "filter_{$property_name}_value", $this->$property_name, $property_value );
         }
 
         $this->_try_hook( $this, "process_filtered_values", $id );
@@ -155,7 +161,7 @@ abstract class Typed_Config {
       }
     }
 
-    $this->_try_hook( $this, 'initialize', $value, $id );
+    $this->_try_hook( $this, 'initialize', $value );
 
     if ( $this === $this->__root__ ) {
       // @TODO: Make it so this does not require calling parent::finalize() somehow.
@@ -364,7 +370,7 @@ MESSAGE;
    */
   private function _set_default_properties( $object, $name, $value, $parent_name = false ) {
     $selector = $parent_name ? "{$parent_name}_{$name}" : $name;
-    if ( is_a( $value, 'TCLP_Needs_Default' ) ) {
+    if ( is_a( $value, 'Typed_Config_Needs_Default' ) ) {
       $new_value = $this->_try_hook( $object, $method_name = "get_{$selector}_default" );
       if ( method_exists( $object, $method_name ) ) {
         if ( isset( $new_value->__id__ ) )
@@ -397,7 +403,6 @@ MESSAGE;
    *
    * @return bool
    */
-
   private function _schema_says_object( $property_name, $parent_name = false ) {
     if ( $parent_name ) {
       $is_object = isset( $this->__schema__[$parent_name][$property_name] ) && is_string( $this->__schema__[$parent_name][$property_name] );
@@ -424,7 +429,7 @@ MESSAGE;
    * @return bool
    */
   private function _schema_says_instantiate_array_of_objects( $property_name ) {
-    return isset($this->__schema__[$property_name]) && is_array( $this->__schema__[$property_name] );
+    return isset($this->__schema__[$property_name] ) && is_array( $this->__schema__[$property_name] );
   }
 
   /**
@@ -484,7 +489,7 @@ MESSAGE;
         if ( is_string( $value ) ) {
           $class_name = $value;
           if ( ! isset( $property_value[$name] ) ) {
-            $array_of_objects[$name] = new TCLP_Needs_Default( $name, $class_name );
+            $array_of_objects[$name] = new Typed_Config_Needs_Default( $name, $class_name );
           } else {
             $array_of_objects[$name] = $this->_instantiate( $name, $property_value[$name], $class_name );
           }
@@ -528,4 +533,20 @@ MESSAGE;
     return $value;
   }
 
+  /**
+   * Autoloads classes from the /classes subdirectory.
+   *
+   * Class Typed_Config_Loader should be found in class-loader.php
+   *
+   * @param string $class_name
+   *
+   * @throws Exception
+   */
+  static function class_autoloader( $class_name ) {
+    $class_file = strtolower( str_replace( '_', '-', preg_replace( '#^Typed_Config_(.*)$#', '$1', $class_name ) ) );
+    if ( file_exists( $filepath = dirname( __DIR__ ) . "/classes/class-{$class_file}.php" ) ) {
+      require ( $filepath );
+    }
+  }
 }
+spl_autoload_register( array( 'Typed_Config', 'class_autoloader' ) );

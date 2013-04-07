@@ -1,5 +1,6 @@
 <?php
-class TCLP_Logger {
+
+class Typed_Config_Logger {
   function notice( $log_text ) {
     fwrite( STDOUT, "\nNotice: {$log_text}\n" );
   }

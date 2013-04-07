@@ -1,0 +1,1 @@
+See: https://wiki.php.net/rfc/jsonable

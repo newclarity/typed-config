@@ -6,7 +6,7 @@ JSON has become one of the best data formats to chose because of it's simplicity
 Well `json_decode()` works great, but it instantiates method-less `stdClass` objects and provide no method for establishing default values. Another downside of JSON is it does not support associative arrays, so working with JSON decoded data in PHP can feel somewhat _unnatural._ **But have no fear**, that's why _"Typed Config"_ is here.
 
 
-The idea behind _Typed Config_ is to enable the PHP developer to model the expected JSON objects in PHP classes using data conventions in a special property to dictate the expected schema, and method-naming conventions to enable many different ways to initialize default values. 
+The idea behind _Typed Config_ is to enable the PHP developer to model the expected JSON objects in PHP classes using data conventions in a special property to dictate the expected schema, and method-naming conventions to enable many different ways to initialize default values.
 
 Because it makes an otherwise tedious programming problem easy we've found it refreshingly cool to work with. And once you've tried it we think you'll feel the same way too.
 

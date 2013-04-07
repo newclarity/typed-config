@@ -1,6 +1,6 @@
 <?php
 
-class TCLP_Needs_Default {
+class Typed_Config_Needs_Default {
   var $property_name;
   var $class_name;
   function __construct( $property_name, $class_name ) {

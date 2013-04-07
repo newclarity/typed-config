@@ -2,7 +2,13 @@
 
 class Typed_Config_Loader {
   private static $_logger;
-  function set_logger( $logger ) {
+
+  /**
+   * @param $logger
+   *
+   * @return mixed
+   */
+  static function set_logger( $logger ) {
     return self::$_logger = $logger;
   }
   /**
@@ -16,7 +22,7 @@ class Typed_Config_Loader {
    */
   static function load( $name, $class_name, $json ) {
     if ( ! isset( self::$_logger ) )
-      self::$_logger = new TCLP_Logger();
+      self::$_logger = new Typed_Config_Logger();
 
     if ( empty( $json ) )
       self::$_logger->error( "The {$name} file or JSON string {$json} is empty." );
