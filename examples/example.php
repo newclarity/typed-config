@@ -17,9 +17,9 @@ function main() {
    * Loads the JSON into root $order' object class 'Example_Order'
    * See class definitions for how to model classes to load the JSON.
    *
-   * @var Typed_Config $order
+   * @var \Typed_Config\Data $order
    */
-  $order = Typed_Config_Loader::load( 'order', 'Example_Order', get_json() );
+  $order = \Typed_Config\Loader::load( 'order', 'Example_Order', get_json() );
 
   /**
    * Grab the list of possible hooks
@@ -86,7 +86,7 @@ JSON;
 /**
  * This class defines both the "schema" to load the JSON as well as it's for the
  */
-class Example_Order extends Typed_Config {
+class Example_Order extends \Typed_Config\Data {
 
   /**
    * Set any default values for properties here.
@@ -118,7 +118,7 @@ class Example_Order extends Typed_Config {
   }
 }
 
-class Example_Customer extends Typed_Config {
+class Example_Customer extends \Typed_Config\Data {
 
   /**
    * Set type to default to 'person' if it's not specified in JSON file.
@@ -159,14 +159,14 @@ class Example_Customer extends Typed_Config {
   }
 }
 
-class Example_Address extends Typed_Config {
+class Example_Address extends \Typed_Config\Data {
   var $street;
   var $city;
   var $country;
   var $post_code;
 }
 
-class Example_Item extends Typed_Config {
+class Example_Item extends \Typed_Config\Data {
   var $sku;
   var $description;
   var $quantity;
