@@ -32,6 +32,11 @@ abstract class Data {
 	protected $__root__;
 
 	/**
+	 * @var bool|Data
+	 */
+	protected $__parent__;
+
+	/**
 	 * @var array
 	 */
 	protected $__unused__ = array();
@@ -45,6 +50,21 @@ abstract class Data {
 	 * @var array
 	 */
 	protected $__hooks__ = array();
+
+	/**
+	 * @var array
+	 */
+	protected $__after_hooks__ = array();
+
+	protected $__after_hook_names__ = array();
+
+	function root() {
+	 	return $this->__parent__;
+	}
+
+	function parent() {
+	 	return $this->__parent__;
+	}
 
 	/**
 	 * Function to allow the loader to set the __filepath__ property
@@ -80,13 +100,57 @@ abstract class Data {
 		return $this->__filepath__;
 	}
 
-	protected function _try_hook( $object, $method_name, $value = null ) {
-		if ( $object->__hooks__[ $method_name ] = method_exists( $object, $method_name ) ) {
-			$value = call_user_func_array( array( $object, $method_name ), array_slice( func_get_args(), 2 ) );
+	protected function _try_hook( $object, $method_name, $value = null, $property_name = null ) {
+
+		if ( $object->__hooks__[ $method_name ] = is_callable( $callable = array( $object, $method_name ) ) ) {
+
+			if ( is_null( $args = array_slice( func_get_args(), 2 ) ) ) {
+
+				$value = call_user_func( $callable );
+
+			} else {
+
+				$value = call_user_func_array( $callable, $args );
+
+			}
+
+		}
+		if ( is_string( $property_name ) ) {
+
+			if ( is_object( $object ) ) {
+
+				$object->$property_name = $value;
+
+			} else if ( is_array( $object ) ) {
+
+				$object[ $property_name ] = $value;
+
+			}
+
+		}
+
+		if ( preg_match( '#^set_#', $method_name ) ) {
+
+			$this->__after_hooks__[] = array( $object, $after_hook = "{$method_name}_after" );
+			$this->__after_hook_names__[] =  get_class( $object ) . "::{$after_hook}";
 		}
 
 		return $value;
+
 	}
+
+	/**
+	 * @return mixed
+	 */
+	protected function _try_after_hooks() {
+		for ( $i = count( $this->__after_hooks__ ) - 1; 0 <= $i; $i-- ) {
+			list( $data, $after_method ) = $this->__after_hooks__[ $i ];
+			if ( is_callable( $callable = array( $data, $after_method ) ) ) {
+				call_user_func( $callable );
+			}
+		}
+	}
+
 
 	/**
 	 * Returns an array for all the properties that are not meta properties for an instance
@@ -103,7 +167,7 @@ abstract class Data {
 					$array[ $name ] = $object_or_array->$name;
 				}
 			}
-		} else {
+		} else if ( ! is_null( $object_or_array ) ) {
 			foreach ( array_keys( $object_or_array ) as $name ) {
 				if ( ! $this->_is_meta_property( $name ) ) {
 					$array[ $name ] = $object_or_array[ $name ];
@@ -131,15 +195,24 @@ abstract class Data {
 		$this->__id__   = $id;
 		$this->__root__ = $root;
 
-		if ( ! is_null( $value ) ) {
+		//if ( ! is_null( $value ) ) {
 
 			if ( is_string( $value ) && ! is_null( $this->__if_string__ ) ) {
 				$this->{$this->__if_string__} = $value;
 				$value                        = $this->_get_public_properties( $this );
 			}
 
-			if ( is_object( $value ) || is_array( $value ) ) {
+			if ( is_object( $this ) || is_object( $value ) || is_array( $value ) ) {
+
 				$array = array_merge( $this->_get_public_properties( $this ), $this->_get_public_properties( $value ) );
+
+				foreach ( $array as $property_name => $property_value ) {
+					/**
+					 * Go ahead and preset so that the passed values are available in the pre_filters.
+					 */
+					$this->$property_name = $property_value;
+				}
+
 				foreach ( $array as $property_name => $property_value ) {
 					$array[ $property_name ] = $this->_try_hook( $this, "pre_filter_{$property_name}_value", $property_value, $property_name, $id );
 				}
@@ -151,6 +224,7 @@ abstract class Data {
 					} else {
 						if ( $this->_schema_says_instantiate( $property_name ) ) {
 							$this->$property_name = $this->_instantiate( $property_name, $property_value );
+
 						} else if ( $this->_schema_says_instantiate_array_of_objects( $property_name ) ) {
 							$this->$property_name = $this->_instantiate_array_of_objects( $property_name, $property_value );
 						} else {
@@ -158,6 +232,7 @@ abstract class Data {
 						}
 						unset( $array[ $property_name ] );
 						$this->$property_name = $this->_try_hook( $this, "filter_{$property_name}_value", $this->$property_name, $property_value );
+						$this->_try_hook( $this, "set_{$property_name}_default", $this->$property_name, $property_value );
 					}
 				}
 
@@ -170,14 +245,15 @@ abstract class Data {
 				$this->__unused__ = $this->_try_hook( $this, "post_filter_unused_values", $this->__unused__, $id );
 
 			}
-		}
+		//}
 
 		$this->_try_hook( $this, 'initialize', $value );
 
 		if ( $this === $this->__root__ ) {
 			// @TODO: Make it so this does not require calling parent::finalize() somehow.
-			$this->_set_defaults( $this, $id );
-			$this->_finalize( $this, $id );
+			//$this->_set_defaults( $this, $id );
+			$this->_finalize( $this );
+			$this->_try_after_hooks();
 		}
 	}
 
@@ -185,7 +261,7 @@ abstract class Data {
 	 * @param object|array $item
 	 * @param string $property_name
 	 */
-	protected function _finalize( $item, $property_name ) {
+	protected function _finalize( $item, $property_name = '<root>' ) {
 		$remaining = $properties = get_object_vars( $item );
 		$times     = 0;
 		while ( count( $remaining ) ) {
@@ -237,6 +313,8 @@ MESSAGE;
 
 	/**
 	 * Strips all the meta values off, mostly so a print_r() or var_dump() is easier to read.
+	 *
+	 * @param bool $except
 	 */
 	function strip_meta( $except = false ) {
 		foreach ( get_object_vars( $this ) as $property_name => $property_value ) {
@@ -266,7 +344,7 @@ MESSAGE;
 	 */
 	function get_hooks( $item = false, $parent = false ) {
 		$hooks = array();
-		if ( ! $item ) {
+		if ( ! $item && ! is_array( $item ) ) {
 			$item = $this;
 		}
 		if ( ! $parent ) {
@@ -495,6 +573,7 @@ MESSAGE;
 		 * @var \Typed_Config\Data $data
 		 */
 		$data = new $class_name();
+		$data->__parent__ = $this;
 		$data->instantiate( $name, $value, $this->__root__ );
 
 		return $data;
@@ -516,7 +595,8 @@ MESSAGE;
 			 * This is a simple numerically indexed array
 			 */
 			foreach ( $property_value as $index => $value ) {
-				$property_value[ $index ] = $this->_instantiate( "{$property_name}[{$index}]", $value, $schema_array[0] );
+				$object = $this->_instantiate( "{$property_name}[{$index}]", $value, $schema_array[0] );
+				$property_value[ $index ] = $object;
 			}
 			$array_of_objects = $property_value;
 		} else {
@@ -573,5 +653,6 @@ MESSAGE;
 
 		return $value;
 	}
+
 }
 
