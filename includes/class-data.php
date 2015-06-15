@@ -645,5 +645,19 @@ MESSAGE;
 		return $value;
 	}
 
+	function properties() {
+
+		$properties = array();
+		foreach( get_object_vars( $this ) as $property => $value ) {
+			if ( preg_match( '#^__(.*)__$#', $property ) ) {
+				continue;
+			}
+			$properties[ $property ] = $value;
+		}
+
+		return $properties;
+
+	}
+
 }
 
