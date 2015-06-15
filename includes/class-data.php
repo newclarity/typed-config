@@ -100,7 +100,7 @@ abstract class Data {
 		return $this->__filepath__;
 	}
 
-	protected function _try_hook( $object, $method_name, $value = null, $property_name = null ) {
+	protected function _try_hook( $object, $method_name, $value = null ) {
 
 		if ( $object->__hooks__[ $method_name ] = is_callable( $callable = array( $object, $method_name ) ) ) {
 
@@ -115,17 +115,10 @@ abstract class Data {
 			}
 
 		}
-		if ( is_string( $property_name ) ) {
+		if ( isset( $args[ 1 ] ) && property_exists( $object, $args[ 1 ] ) ) {
 
-			if ( is_object( $object ) ) {
-
-				$object->$property_name = $value;
-
-			} else if ( is_array( $object ) ) {
-
-				$object[ $property_name ] = $value;
-
-			}
+			$property_name = $args[ 1 ];
+			$object->$property_name = $value;
 
 		}
 
@@ -195,57 +188,54 @@ abstract class Data {
 		$this->__id__   = $id;
 		$this->__root__ = $root;
 
-		//if ( ! is_null( $value ) ) {
+		if ( is_string( $value ) && ! is_null( $this->__if_string__ ) ) {
+			$this->{$this->__if_string__} = $value;
+			$value                        = $this->_get_public_properties( $this );
+		}
 
-			if ( is_string( $value ) && ! is_null( $this->__if_string__ ) ) {
-				$this->{$this->__if_string__} = $value;
-				$value                        = $this->_get_public_properties( $this );
+		if ( is_object( $this ) || is_object( $value ) || is_array( $value ) ) {
+
+			$array = array_merge( $this->_get_public_properties( $this ), $this->_get_public_properties( $value ) );
+
+			foreach ( $array as $property_name => $property_value ) {
+				/**
+				 * Go ahead and preset so that the passed values are available in the pre_filters.
+				 */
+				$this->$property_name = $property_value;
 			}
 
-			if ( is_object( $this ) || is_object( $value ) || is_array( $value ) ) {
+			foreach ( $array as $property_name => $property_value ) {
+				$array[ $property_name ] = $this->_try_hook( $this, "pre_filter_{$property_name}_value", $property_value, $property_name, $id );
+			}
+			$array = array_merge( $this->_get_public_properties( $this ), array_filter( (array) $array ) );
+			$array = $this->_try_hook( $this, "pre_filter_values", $array, $id );
+			foreach ( $array as $property_name => $property_value ) {
+				if ( ! property_exists( $this, $property_name ) ) {
+					$this->__unused__[ $property_name ] = $property_value;
+				} else {
+					if ( $this->_schema_says_instantiate( $property_name ) ) {
+						$this->$property_name = $this->_instantiate( $property_name, $property_value );
 
-				$array = array_merge( $this->_get_public_properties( $this ), $this->_get_public_properties( $value ) );
-
-				foreach ( $array as $property_name => $property_value ) {
-					/**
-					 * Go ahead and preset so that the passed values are available in the pre_filters.
-					 */
-					$this->$property_name = $property_value;
-				}
-
-				foreach ( $array as $property_name => $property_value ) {
-					$array[ $property_name ] = $this->_try_hook( $this, "pre_filter_{$property_name}_value", $property_value, $property_name, $id );
-				}
-				$array = array_merge( $this->_get_public_properties( $this ), array_filter( (array) $array ) );
-				$array = $this->_try_hook( $this, "pre_filter_values", $array, $id );
-				foreach ( $array as $property_name => $property_value ) {
-					if ( ! property_exists( $this, $property_name ) ) {
-						$this->__unused__[ $property_name ] = $property_value;
+					} else if ( $this->_schema_says_instantiate_array_of_objects( $property_name ) ) {
+						$this->$property_name = $this->_instantiate_array_of_objects( $property_name, $property_value );
 					} else {
-						if ( $this->_schema_says_instantiate( $property_name ) ) {
-							$this->$property_name = $this->_instantiate( $property_name, $property_value );
-
-						} else if ( $this->_schema_says_instantiate_array_of_objects( $property_name ) ) {
-							$this->$property_name = $this->_instantiate_array_of_objects( $property_name, $property_value );
-						} else {
-							$this->$property_name = $property_value;
-						}
-						unset( $array[ $property_name ] );
-						$this->$property_name = $this->_try_hook( $this, "filter_{$property_name}_value", $this->$property_name, $property_value );
-						$this->_try_hook( $this, "set_{$property_name}_default", $this->$property_name, $property_value );
+						$this->$property_name = $property_value;
 					}
+					unset( $array[ $property_name ] );
+					$this->$property_name = $this->_try_hook( $this, "filter_{$property_name}_value", $this->$property_name, $property_value );
+					$this->_try_hook( $this, "set_{$property_name}_default", $this->$property_name, $property_value );
 				}
-
-				$this->_try_hook( $this, "process_filtered_values", $id );
-
-				if ( count( $array ) ) {
-					$this->__unused__ = $array;
-				}
-
-				$this->__unused__ = $this->_try_hook( $this, "post_filter_unused_values", $this->__unused__, $id );
-
 			}
-		//}
+
+			$this->_try_hook( $this, "process_filtered_values", $id );
+
+			if ( count( $array ) ) {
+				$this->__unused__ = $array;
+			}
+
+			$this->__unused__ = $this->_try_hook( $this, "post_filter_unused_values", $this->__unused__, $id );
+
+		}
 
 		$this->_try_hook( $this, 'initialize', $value );
 
@@ -253,7 +243,7 @@ abstract class Data {
 			// @TODO: Make it so this does not require calling parent::finalize() somehow.
 			//$this->_set_defaults( $this, $id );
 			$this->_finalize( $this );
-			$this->_try_after_hooks();
+			//$this->_try_after_hooks();
 		}
 	}
 
@@ -566,6 +556,7 @@ MESSAGE;
 	 * @return \Typed_Config\Data
 	 */
 	protected function _instantiate( $name, $value, $class_name = false ) {
+
 		if ( ! $class_name ) {
 			$class_name = $this->__schema__[ $name ];
 		}
