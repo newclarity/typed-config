@@ -42,7 +42,7 @@ abstract class Data {
 	protected $__unused__ = array();
 
 	/**
-	 * @var bool|object
+	 * @var bool|Logger
 	 */
 	protected $__logger__;
 
@@ -656,6 +656,18 @@ MESSAGE;
 		}
 
 		return $properties;
+
+	}
+
+	/**
+	 * @param $error_msg
+	 * @param $error_no
+	 */
+	function log_error( $error_msg, $error_no = 1 ) {
+
+		$this->__logger__->error( "[$error_no}] {$error_msg}" );
+
+		die( $error_no );
 
 	}
 
