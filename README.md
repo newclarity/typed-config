@@ -1,3 +1,6 @@
+#DEPRECATION NOTICE
+This project has been **deprecated** in favor of [**JSON Loader**](https://github.com/wplib/json-loader).
+
 #Typed Config
 ###A Library for Loading and using JSON in PHP Typed Objects
 
